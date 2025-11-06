@@ -208,53 +208,102 @@ require_once ASTRA_THEME_DIR . 'inc/core/deprecated/deprecated-functions.php';
 
 // === Student Wellness Dashboard Shortcode ===
 function student_dashboard_section() {
-    if ( !is_user_logged_in() ) {
-        return '<p style="text-align:center;color:#BA0C2F;">Please <a href="/login">log in</a> to view your personalized dashboard.</p>';
+      if ( !is_user_logged_in() ) {
+        // If user not logged in — show nothing
+        return '';
     }
 
-    $user_id = get_current_user_id();
 
-    // Retrieve saved user data
+    $user_id = get_current_user_id();
     $mood = get_user_meta($user_id, 'mood', true);
     $stress_level = get_user_meta($user_id, 'stress_level', true);
     $goal = get_user_meta($user_id, 'goal', true);
+    $completed_tasks = get_user_meta($user_id, 'completed_tasks', true) ?: [];
 
-    // If no data saved yet, default values
-    if (!$stress_level) $stress_level = 5;
+    if (!$stress_level) $stress_level = rand(3, 9);
     $percent = ($stress_level / 10) * 100;
 
-    ob_start();
-    ?>
+    // Dynamic To-Do Suggestions
+    $todo = [];
+    if ($mood === 'Happy') {
+        $todo = ['Share positive thoughts', 'Help a peer', 'Take a gratitude break'];
+    } elseif ($mood === 'Neutral') {
+        $todo = ['Short walk outdoors', 'Watch a motivational video', 'Reflect on your goals'];
+    } elseif ($mood === 'Stressed' || $stress_level > 6) {
+        $todo = ['5-min deep breathing', 'Write down what’s bothering you', 'Try mindfulness audio'];
+    } else {
+        $todo = ['Stay consistent with your habits', 'Track your progress', 'Spend time offline'];
+    }
+
+    // 🔹 Emoji based on mood or stress level
+    if ($mood === 'Happy') $emoji = '😊';
+    elseif ($mood === 'Neutral') $emoji = '😐';
+    elseif ($mood === 'Stressed' || $stress_level > 7) $emoji = '😫';
+    else $emoji = '🙂';
+
+    ob_start(); ?>
+
+    <!-- 🌟 Styles -->
     <style>
+    #student-dashboard {
+        margin: 60px 29px 93px 35px;
+    }
     .popup-bg {
-      display: none;
-      position: fixed;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.6);
-      justify-content: center;
-      align-items: center;
-      z-index: 9999;
+        display:none;position:fixed;top:0;left:0;width:100%;height:100%;
+        background:rgba(0,0,0,0.6);justify-content:center;align-items:center;z-index:9999;
     }
     .popup {
-      background: #fff;
-      padding: 25px;
-      border-radius: 15px;
-      width: 400px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        background:#fff;padding:25px;border-radius:15px;width:400px;
+        box-shadow:0 4px 10px rgba(0,0,0,0.2);
     }
-    .popup h3 { margin-bottom: 15px; color:#BA0C2F; }
-    .popup label { display:block; margin:10px 0 5px; font-weight:600; }
+    .popup h3 {color:#BA0C2F;text-align:center;}
+    .popup label {display:block;margin:10px 0 5px;font-weight:600;}
     .popup input, .popup select {
-      width:100%; padding:8px; border-radius:6px; border:1px solid #ccc;
+        width:100%;padding:8px;border-radius:6px;border:1px solid #ccc;
     }
     .popup button {
-      margin-top:15px; background:#BA0C2F; color:#fff; border:none; padding:10px 15px; border-radius:8px;
-      cursor:pointer;
+        margin-top:15px;background:#BA0C2F;color:#fff;border:none;
+        padding:10px 15px;border-radius:8px;cursor:pointer;width:100%;
     }
+    .dashboard {
+        display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));
+        gap:25px;margin:40px 0;
+    }
+    .dashboard .card {
+        background:#fff;border-radius:15px;padding:25px;
+        box-shadow:0 4px 10px rgba(0,0,0,0.1);transition:transform 0.2s;
+    }
+    .dashboard .card:hover {transform:translateY(-5px);}
+    .dashboard .card h3 {
+        color:#BA0C2F;font-size:20px;font-weight:700;margin-bottom:10px;
+        border-bottom:2px solid #BA0C2F;padding-bottom:5px;
+    }
+    .dashboard ul {list-style:none;padding:0;margin:0;}
+    .dashboard ul li {
+        background:#f9f9f9;padding:10px 14px;margin-bottom:8px;border-radius:8px;
+        cursor:pointer;display:flex;align-items:center;justify-content:space-between;
+        font-weight:500;
+        transition:background 0.2s ease;
+    }
+    .dashboard ul li:hover {background:#f1f1f1;}
+    .dashboard ul li.done {
+        background:#BA0C2F;color:#fff;
+    }
+    .dashboard ul li .checkmark {
+    width: 20px; height: 20px; padding: 3px; border-radius: 50%;  display: flex; align-items: center;justify-content: center;
+    font-size: 14px; transition: all 0.3se ease;
+  }
+    .dashboard ul li.done .checkmark {
+        color:white;content:'✔';
+    }
+    .dashboard .value { font-size: 28px; font-weight: bold; color: #333; margin: 8px 0; } 
+    .dashboard .progress-bar { background: #eee; border-radius: 10px; height: 10px; width: 100%; } 
+    .dashboard .progress { background: #BA0C2F; height: 10px; border-radius: 10px; }
+    .emoji-display {font-size: 40px; }
     </style>
 
-    <!-- Popup Form -->
-    <div class="popup-bg" id="moodPopup">
+    <!-- 🌟 Popup -->
+    <div class="popup-bg" id="wellnessPopup">
       <div class="popup">
         <h3>Tell us how you're feeling today 😊</h3>
         <label for="mood">Mood</label>
@@ -271,17 +320,21 @@ function student_dashboard_section() {
         <label for="goal">Today's Goal</label>
         <input type="text" id="goal" placeholder="e.g., Stay calm during study">
 
-        <button id="saveMood">Save</button>
+        <button id="saveWellness">Save</button>
       </div>
     </div>
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const popupBg = document.getElementById('moodPopup');
-      const saveBtn = document.getElementById('saveMood');
-      const userHasData = <?php echo $mood ? 'true' : 'false'; ?>;
+      const popupBg = document.getElementById('wellnessPopup');
+      const saveBtn = document.getElementById('saveWellness');
+      const hasData = <?php echo $mood ? 'true' : 'false'; ?>;
 
-      if (!userHasData) {
+      // 🔹 Show popup if 4 hours passed or no data yet
+      const lastPopup = localStorage.getItem('lastPopupTime');
+      const now = new Date().getTime();
+      const fourHours = 4 * 60 * 60 * 1000;
+      if (!hasData || !lastPopup || now - lastPopup > fourHours) {
         popupBg.style.display = 'flex';
       }
 
@@ -289,69 +342,122 @@ function student_dashboard_section() {
         const mood = document.getElementById('mood').value;
         const stress = document.getElementById('stress').value;
         const goal = document.getElementById('goal').value;
+        if (!mood || !stress || !goal) { alert('Please fill all fields'); return; }
 
-        if (!mood || !stress || !goal) {
-          alert('Please fill all fields');
-          return;
-        }
-
-        // Send to AJAX
         fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
           method: 'POST',
           headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-          body: new URLSearchParams({
-            action: 'save_user_wellness',
-            mood, stress, goal
-          })
+          body: new URLSearchParams({ action: 'save_user_wellness', mood, stress, goal })
         }).then(res => res.text()).then(() => {
-          alert('Saved successfully!');
+          localStorage.setItem('lastPopupTime', new Date().getTime());
           popupBg.style.display = 'none';
           location.reload();
         });
       });
+
+      // ✅ To-do item click
+      document.querySelectorAll('.todo-item').forEach(item => {
+        item.addEventListener('click', function() {
+          const check = this.querySelector('.checkmark');
+          this.classList.toggle('done');
+          check.textContent = this.classList.contains('done') ? '✔' : '';
+          const task = this.dataset.task;
+          const done = this.classList.contains('done') ? 1 : 0;
+          fetch('<?php echo admin_url('admin-ajax.php'); ?>', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({ action: 'toggle_task', task, done })
+          });
+        });
+      });
     });
     </script>
-    <?php
 
-    // --- Dashboard content here (use saved mood/stress/goal dynamically) ---
-    ?>
     <section id="student-dashboard">
-      <h2 style="text-align:center; color:#BA0C2F;">Welcome back, <?php echo wp_get_current_user()->display_name; ?> 👋</h2>
-      <p style="text-align:center; color:#555;">
-        Mood: <b><?php echo esc_html($mood ?: 'Not set'); ?></b> | 
-        Stress Level: <b><?php echo esc_html($stress_level); ?>/10</b> | 
-        Goal: <b><?php echo esc_html($goal ?: 'None'); ?></b>
-      </p>
-      <hr>
-      <p style="text-align:center;color:#777;">Your personalized suggestions will appear below 👇</p>
+      <h2 style="text-align:center;color:#BA0C2F;font-weight:700;">Your Personalized Wellness Dashboard</h2>
 
-      <?php if ($mood == 'Stressed'): ?>
-        <ul style="text-align:center;">
-          <li>🧘 Try a short breathing exercise</li>
-          <li>🚶 Take a 10-minute walk</li>
-          <li>📖 Read one motivational article</li>
-        </ul>
-      <?php elseif ($mood == 'Happy'): ?>
-        <p style="text-align:center;">🎉 Great mood! Keep the positivity flowing. Maybe share your energy in the Peer Support section!</p>
-      <?php else: ?>
-        <p style="text-align:center;">🙂 Stay consistent — small steps make big differences.</p>
-      <?php endif; ?>
+      <div class="dashboard">
+        <div class="card">
+          <h3>Helpful Tips</h3>
+          <p>
+            <?php
+              if ($stress_level > 7) echo "You're feeling quite stressed — take small breaks and breathe deeply.";
+              elseif ($mood === 'Happy') echo "Keep spreading positivity and focus on your goals!";
+              elseif ($mood === 'Neutral') echo "You’re in balance — a perfect time to make steady progress.";
+              else echo "Keep tracking how you feel daily — small steps count!";
+            ?>
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Your To-Do for Today</h3>
+          <ul>
+            <?php foreach ($todo as $task): 
+              $done = in_array($task, $completed_tasks); ?>
+              <li class="todo-item <?php echo $done ? 'done' : ''; ?>" data-task="<?php echo esc_attr($task); ?>">
+                <?php echo esc_html($task); ?>
+                <span class="checkmark"><?php echo $done ? '✔' : ''; ?></span>
+              </li>
+            <?php endforeach; ?>
+          </ul>
+        </div>
+
+        <div class="card">
+          <h3>Stress Level</h3>
+          <div class="emoji-display"><?php echo $emoji; ?></div>
+          <div class="value"><?php echo $stress_level; ?> / 10</div>
+          <div class="progress-bar"><div class="progress" style="width:<?php echo $percent; ?>%;"></div></div>
+          <p style="margin-top:10px;">
+            <?php 
+              if ($stress_level > 7) echo " High stress — focus on relaxation.";
+              elseif ($stress_level > 4) echo "Moderate stress — balance it with rest.";
+              else echo " Low stress — you're doing great!";
+            ?>
+          </p>
+        </div>
+
+        <div class="card">
+          <h3>Motivational Reads</h3>
+          <ul>
+            <?php
+              $posts = get_posts(['numberposts' => 3, 'category_name' => 'motivation']);
+              if ($posts) {
+                foreach ($posts as $p) {
+                  echo '<li><a href="'.get_permalink($p).'">'.esc_html($p->post_title).'</a></li>';
+                }
+              } else {
+                echo '<li>Keep going — progress takes time!</li>';
+              }
+            ?>
+          </ul>
+        </div>
+      </div>
     </section>
-    <?php
 
+    <?php
     return ob_get_clean();
 }
 add_shortcode('student_dashboard', 'student_dashboard_section');
 
-
-// --- Handle AJAX save ---
+// 🧠 Save user wellness data
 add_action('wp_ajax_save_user_wellness', function() {
     $user_id = get_current_user_id();
     if (!$user_id) wp_die('Not logged in');
-
     update_user_meta($user_id, 'mood', sanitize_text_field($_POST['mood']));
     update_user_meta($user_id, 'stress_level', intval($_POST['stress']));
     update_user_meta($user_id, 'goal', sanitize_text_field($_POST['goal']));
-
     wp_die('Saved');
+});
+
+// ✅ Mark to-do tasks done/undone
+add_action('wp_ajax_toggle_task', function() {
+    $user_id = get_current_user_id();
+    if (!$user_id) wp_die('Not logged in');
+    $task = sanitize_text_field($_POST['task']);
+    $done = intval($_POST['done']);
+    $tasks = get_user_meta($user_id, 'completed_tasks', true) ?: [];
+    if ($done && !in_array($task, $tasks)) $tasks[] = $task;
+    if (!$done && in_array($task, $tasks)) $tasks = array_diff($tasks, [$task]);
+    update_user_meta($user_id, 'completed_tasks', $tasks);
+    wp_die('ok');
 });
